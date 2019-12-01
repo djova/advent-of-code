@@ -13,12 +13,10 @@ def fuel_required(mass):
 print("Part 1:", sum([fuel_required(m) for m in input_ints]))
 
 
-def total_fuel_required(mass):
+def total_fuel_required(fuel):
     total = 0
-    fuel = fuel_required(mass)
-    while fuel > 0:
+    while (fuel := fuel_required(fuel)) > 0:
         total += fuel
-        fuel = fuel_required(fuel)
     return total
 
 
