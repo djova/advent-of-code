@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-import math
 from os.path import join, dirname, realpath
 
-from lib.intcode import runcode, parse_instruction
+from lib.intcode import Intcode
 
 input_file = join(dirname(realpath(__file__)), '..', 'inputs', '05.txt')
 input_ints = [int(i) for i in open(input_file, 'r').read().split(',')]
@@ -62,4 +61,4 @@ def run_tests():
 
 # run_tests()
 
-runcode(input_ints, 5)
+Intcode(input_ints, 5).run()

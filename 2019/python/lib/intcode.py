@@ -41,64 +41,63 @@ def parse_instruction(instruction):
     return opcode, param_modes
 
 
-def runcode(memory, input=0):
-    print("runcode-start")
-    mem = memory.copy()
-    i = 0
+class Intcode:
+    def __init__(self, memory, input=0):
+        self.memory = memory.copy()
+        self.input = input
+        self.pi = 0
 
-    def extract_params(param_modes, last_immediate=False):
-        last_i = len(param_modes) - 1
-        for p_i, mode in enumerate(param_modes):
-            p_index = i + p_i + 1
-            val = mem[p_index]
-            if last_immediate and p_i == last_i:
+    def extract_params(self, param_modes, last_immediate=False):
+        for i, mode in enumerate(param_modes):
+            p_index = self.pi + i + 1
+            val = self.memory[p_index]
+            if last_immediate and i == len(param_modes) - 1:
                 yield val
             elif mode == POSITION_MODE:
-                yield mem[val]
+                yield self.memory[val]
             elif mode == IMMEDIATE_MODE:
                 yield val
             else:
                 raise Exception("unknown mode: {}".format(mode))
 
-    while (instruction := mem[i]) != HALT:
-        opcode, param_modes = parse_instruction(instruction)
-        if opcode == ADD:
-            a, b, result_i = list(extract_params(param_modes, True))
-            mem[result_i] = a + b
-            i += 4
-        elif opcode == MULT:
-            a, b, result_i = list(extract_params(param_modes, True))
-            mem[result_i] = a * b
-            i += 4
-        elif opcode == SAVE_TO:
-            result_i = mem[i + 1]
-            mem[result_i] = input
-            i += 2
-        elif opcode == OUTPUT:
-            params = list(extract_params(param_modes))
-            print(params[0])
-            i += 2
-        elif opcode == JUMP_IF_TRUE:
-            a, b = list(extract_params(param_modes))
-            if a != 0:
-                i = b
+    def run(self):
+        while (instruction := self.memory[self.pi]) != HALT:
+            opcode, param_modes = parse_instruction(instruction)
+            if opcode == ADD:
+                a, b, result_i = list(self.extract_params(param_modes, True))
+                self.memory[result_i] = a + b
+                self.pi += 4
+            elif opcode == MULT:
+                a, b, result_i = list(self.extract_params(param_modes, True))
+                self.memory[result_i] = a * b
+                self.pi += 4
+            elif opcode == SAVE_TO:
+                result_i = self.memory[self.pi + 1]
+                self.memory[result_i] = self.input
+                self.pi += 2
+            elif opcode == OUTPUT:
+                params = list(self.extract_params(param_modes))
+                print(params[0])
+                self.pi += 2
+            elif opcode == JUMP_IF_TRUE:
+                a, b = list(self.extract_params(param_modes))
+                if a != 0:
+                    self.pi = b
+                else:
+                    self.pi += 3
+            elif opcode == JUMP_IF_FALSE:
+                a, b = list(self.extract_params(param_modes))
+                if a == 0:
+                    self.pi = b
+                else:
+                    self.pi += 3
+            elif opcode == LESS_THAN:
+                a, b, result_i = list(self.extract_params(param_modes, True))
+                self.memory[result_i] = 1 if a < b else 0
+                self.pi += 4
+            elif opcode == EQUALS:
+                a, b, result_i = list(self.extract_params(param_modes, True))
+                self.memory[result_i] = 1 if a == b else 0
+                self.pi += 4
             else:
-                i += 3
-        elif opcode == JUMP_IF_FALSE:
-            a, b = list(extract_params(param_modes))
-            if a == 0:
-                i = b
-            else:
-                i += 3
-        elif opcode == LESS_THAN:
-            a, b, result_i = list(extract_params(param_modes, True))
-            mem[result_i] = 1 if a < b else 0
-            i += 4
-        elif opcode == EQUALS:
-            a, b, result_i = list(extract_params(param_modes, True))
-            mem[result_i] = 1 if a == b else 0
-            i += 4
-        else:
-            raise Exception("unknown opcode: {}".format(opcode))
-    print("runcode-done")
-    return mem
+                raise Exception("unknown opcode: {}".format(opcode))
