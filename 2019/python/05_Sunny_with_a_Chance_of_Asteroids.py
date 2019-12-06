@@ -23,25 +23,25 @@ def run_tests():
     #
     po_equal_8 = [3, 9, 8, 9, 10, 9, 4, 9, 99, -1, 8]
 
-    runcode(po_equal_8, 3)
+    Intcode(po_equal_8, 3).run()
     print("expected 0")
-    runcode(po_equal_8, 8)
+    Intcode(po_equal_8, 8).run()
     print("expected 1")
     #
     # po_lt_8 = [3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8]
     #
-    # runcode(po_lt_8, 9)
+    # Intcode(po_lt_8, 9).run()
     # print("expected 0")
     #
-    # runcode(po_lt_8, 3)
+    # Intcode(po_lt_8, 3).run()
     # print("expected 1")
 
     im_equal_8 = [3, 3, 1108, -1, 8, 3, 4, 3, 99]
 
-    runcode(im_equal_8, 3)
+    Intcode(im_equal_8, 3).run()
     print("expected 0")
 
-    runcode(im_equal_8, 8)
+    Intcode(im_equal_8, 8).run()
     print("expected 1")
 
     im_lt_8 = [3, 3, 1107, -1, 8, 3, 4, 3, 99]
