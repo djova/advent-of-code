@@ -37,10 +37,10 @@ def extract_param_modes(instruction, op_io):
 
 
 class Intcode:
-    def __init__(self, memory, input=0):
+    def __init__(self, memory, inputs=[]):
         self.memory = memory.copy()
-        self.input = input
         self.pi = 0
+        self.inputs = inputs
 
     def extract_params(self, param_modes):
         for i, mode in enumerate(param_modes):
@@ -61,6 +61,13 @@ class Intcode:
         out_params = self.memory[out_i:out_i + n_out]
         return opcode, in_params + out_params
 
+    def run_safe(self):
+        try:
+            for x in self.run():
+                yield x
+        except IndexError:
+            pass
+
     def run(self):
         while (instruction := self.memory[self.pi]) != HALT:
             opcode, params = self.parse_instruction(instruction)
@@ -73,9 +80,9 @@ class Intcode:
                 self.memory[d] = a * b
             elif opcode == SAVE_TO:
                 d = params[0]
-                self.memory[d] = self.input
+                self.memory[d] = self.inputs.pop()
             elif opcode == OUTPUT:
-                print(params[0])
+                yield params[0]
             elif opcode == JUMP_IF_TRUE:
                 a, b = params
                 if a != 0:
