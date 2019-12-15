@@ -43,23 +43,36 @@ def extract_param_modes(instruction, op_io):
 class Intcode:
     def __init__(self, memory, inputs=[]):
         self.memory = memory.copy()
+        self.extra_memory = {}
         self.pi = 0
         self.inputs = inputs
         self.relative_base = 0
 
+    def mget(self, i):
+        if i < len(self.memory):
+            return self.memory[i]
+        else:
+            return self.extra_memory.get(i, 0)
+
+    def mset(self, i, v):
+        if i < len(self.memory):
+            self.memory[i] = v
+        else:
+            self.extra_memory[i] = v
+
     def extract_params(self, modes, n_out):
         for i, mode in enumerate(modes):
             is_out_param = i >= (len(modes) - n_out)
-            val = self.memory[self.pi + i + 1]
+            val = self.mget(self.pi + i + 1)
             if mode == POSITION_MODE:
-                yield val if is_out_param else self.memory[val]
+                yield val if is_out_param else self.mget(val)
             elif mode == IMMEDIATE_MODE:
                 if is_out_param:
                     raise Exception("out param can never be in immediate mode")
                 yield val
             elif mode == RELATIVE_MODE:
                 pos = self.relative_base + val
-                yield pos if is_out_param else self.memory[pos]
+                yield pos if is_out_param else self.mget(pos)
             else:
                 raise Exception("unknown mode: {}".format(mode))
 
@@ -77,18 +90,18 @@ class Intcode:
             pass
 
     def run(self):
-        while (instruction := self.memory[self.pi]) != HALT:
+        while (instruction := self.mget(self.pi)) != HALT:
             opcode, params = self.parse_instruction(instruction)
             jumped = False
             if opcode == ADD:
                 a, b, d = params
-                self.memory[d] = a + b
+                self.mset(d, a + b)
             elif opcode == MULT:
                 a, b, d = params
-                self.memory[d] = a * b
+                self.mset(d, a * b)
             elif opcode == SAVE_TO:
                 d = params[0]
-                self.memory[d] = self.inputs.pop()
+                self.mset(d, self.inputs.pop())
             elif opcode == OUTPUT:
                 yield params[0]
             elif opcode == JUMP_IF_TRUE:
@@ -103,10 +116,10 @@ class Intcode:
                     jumped = True
             elif opcode == LESS_THAN:
                 a, b, d = params
-                self.memory[d] = 1 if a < b else 0
+                self.mset(d, 1 if a < b else 0)
             elif opcode == EQUALS:
                 a, b, d = params
-                self.memory[d] = 1 if a == b else 0
+                self.mset(d, 1 if a == b else 0)
             elif opcode == RELATIVE_BASE_OFFSET:
                 a = params[0]
                 self.relative_base += a
