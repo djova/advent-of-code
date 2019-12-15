@@ -8,6 +8,7 @@ JUMP_IF_TRUE = 5
 JUMP_IF_FALSE = 6
 LESS_THAN = 7
 EQUALS = 8
+RELATIVE_BASE_OFFSET = 9
 HALT = 99
 
 # operation I/O => (num_inputs, num_outputs)
@@ -19,7 +20,8 @@ op_io = {
     JUMP_IF_TRUE: (2, 0),
     JUMP_IF_FALSE: (2, 0),
     LESS_THAN: (2, 1),
-    EQUALS: (2, 1)
+    EQUALS: (2, 1),
+    RELATIVE_BASE_OFFSET: (1, 0)
 }
 
 # parameter modes
@@ -29,6 +31,8 @@ POSITION_MODE = 0
 
 # plain value
 IMMEDIATE_MODE = 1
+
+RELATIVE_MODE = 2
 
 
 def extract_param_modes(instruction, op_io):
@@ -41,25 +45,29 @@ class Intcode:
         self.memory = memory.copy()
         self.pi = 0
         self.inputs = inputs
+        self.relative_base = 0
 
-    def extract_params(self, param_modes):
-        for i, mode in enumerate(param_modes):
+    def extract_params(self, modes, n_out):
+        for i, mode in enumerate(modes):
+            is_out_param = i >= (len(modes) - n_out)
             val = self.memory[self.pi + i + 1]
             if mode == POSITION_MODE:
-                yield self.memory[val]
+                yield val if is_out_param else self.memory[val]
             elif mode == IMMEDIATE_MODE:
+                if is_out_param:
+                    raise Exception("out param can never be in immediate mode")
                 yield val
+            elif mode == RELATIVE_MODE:
+                pos = self.relative_base + val
+                yield pos if is_out_param else self.memory[pos]
             else:
                 raise Exception("unknown mode: {}".format(mode))
 
     def parse_instruction(self, instruction):
         opcode = instruction % 100
         n_in, n_out = op_io[opcode]
-        param_modes = list(extract_param_modes(instruction, n_in))
-        in_params = list(self.extract_params(param_modes))
-        out_i = self.pi + n_in + 1
-        out_params = self.memory[out_i:out_i + n_out]
-        return opcode, in_params + out_params
+        param_modes = list(extract_param_modes(instruction, n_in + n_out))
+        return opcode, list(self.extract_params(param_modes, n_out))
 
     def run_safe(self):
         try:
@@ -99,6 +107,9 @@ class Intcode:
             elif opcode == EQUALS:
                 a, b, d = params
                 self.memory[d] = 1 if a == b else 0
+            elif opcode == RELATIVE_BASE_OFFSET:
+                a = params[0]
+                self.relative_base += a
             else:
                 raise Exception("unknown opcode: {}".format(opcode))
             if not jumped:
