@@ -41,7 +41,9 @@ def extract_param_modes(instruction, op_io):
 
 
 class Intcode:
-    def __init__(self, memory, inputs=[]):
+    def __init__(self, memory, inputs=None):
+        if not inputs:
+            inputs = []
         self.memory = memory.copy()
         self.extra_memory = {}
         self.pi = 0
@@ -53,6 +55,9 @@ class Intcode:
             return self.memory[i]
         else:
             return self.extra_memory.get(i, 0)
+
+    def add_input(self, v):
+        self.inputs.insert(0, v)
 
     def mset(self, i, v):
         if i < len(self.memory):
