@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-import itertools
+import math
 from collections import defaultdict
 from os.path import join, dirname, realpath
-import math
-
-from lib.intcode import Intcode
 
 input_file = join(dirname(realpath(__file__)), '..', 'inputs', '10.txt')
 input_map = open(input_file, 'r').read()
@@ -80,38 +77,11 @@ test5 = """\
 """
 
 
-def itergrid(grid):
+def iter_asteroids(grid):
     for y, row in enumerate(grid):
         for x, col in enumerate(row):
             if col == '#':
                 yield x, y
-
-
-def slope(a, b):
-    dx = b[0] - a[0]
-    dy = b[1] - a[1]
-    if dx == 0:
-        return "up" if dy > 0 else "down"
-    return dy / dx
-
-
-def is_between(p, a, b):
-    x1, x2 = sorted([a[0], b[0]])
-    y1, y2 = sorted([a[1], b[1]])
-    if not (x1 <= p[0] <= x2):
-        return False
-    if not (y1 <= p[1] <= y2):
-        return False
-    if slope(a, b) != slope(p, b):
-        return False
-    return True
-
-
-def is_visible(grid, asteroids, a, b):
-    for p in asteroids - set([a, b]):
-        if is_between(p, a, b):
-            return False
-    return True
 
 
 def get_angle(a, b):
@@ -132,7 +102,7 @@ def asteroids_by_angle(asteroids, origin):
     a_by_angle = defaultdict(list)
     for a in asteroids:
         a_by_angle[get_angle(origin, a)].append(a)
-    return {a: sorted(l, key=lambda p: distance(p, origin)) for a, l in a_by_angle.items()}
+    return a_by_angle
 
 
 def num_detectable(asteroids, point):
@@ -143,16 +113,17 @@ def num_detectable(asteroids, point):
 
 def find_best_location(map):
     grid = map.split('\n')
-    asteroids = {(x, y) for x, y in itergrid(grid)}
+    asteroids = set(iter_asteroids(grid))
     detectable = [(a, num_detectable(asteroids, a)) for a in asteroids]
     return max(detectable, key=lambda d: d[1])
 
 
 def run_laser(map, origin):
     grid = map.split('\n')
-    asteroids = {(x, y) for x, y in itergrid(grid)}
+    asteroids = set(iter_asteroids(grid)) - set([origin])
     a_by_angle = asteroids_by_angle(asteroids, origin)
-    sorted_angles = a_by_angle.keys()
+    a_by_angle = {a: sorted(l, key=lambda p: distance(p, origin)) for a, l in a_by_angle.items()}
+    sorted_angles = sorted(a_by_angle.keys())
     while asteroids:
         for angle in sorted_angles:
             inline = a_by_angle[angle]
@@ -176,8 +147,8 @@ def run_tests():
     assert find_best_location(test3) == ((1, 2), 35)
     print("running test4")
     assert find_best_location(test4) == ((6, 3), 41)
-    # print("running test5")
-    # assert find_best_location(test5) == ((11, 13), 210)
+    print("running test5")
+    assert find_best_location(test5) == ((11, 13), 210)
 
     v = list(run_laser(test5, (11, 13)))
     assert v[0] == (11, 12)
@@ -191,9 +162,9 @@ def run_tests():
 
 run_tests()
 
-# print("running part1")
-# print(find_best_location(input_map))
+print("part1")
+print(find_best_location(input_map))
 
-print('part 2')
+print('part2')
 x = list(run_laser(input_map, (27, 19)))[199]
 print(x[0] * 100 + x[1])
