@@ -2,7 +2,6 @@
 import itertools
 import sys
 import termios
-import time
 import tty
 from os.path import join, dirname, realpath
 

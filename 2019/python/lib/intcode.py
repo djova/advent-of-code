@@ -1,4 +1,5 @@
 import math
+import copy
 
 ADD = 1
 MULT = 2
@@ -132,3 +133,14 @@ class Intcode:
                 raise Exception("unknown opcode: {}".format(opcode))
             if not jumped:
                 self.pi += len(params) + 1
+
+    def __copy__(self):
+        ic = Intcode(
+            copy.copy(self.memory)
+        )
+        ic.inputs = copy.copy(self.inputs)
+        ic.extra_memory = copy.copy(self.extra_memory)
+        ic.pop = copy.copy(self.extra_memory)
+        ic.pi = self.pi
+        ic.relative_base = self.relative_base
+        return ic
