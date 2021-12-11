@@ -60,7 +60,6 @@ def descend(grid, basins, start):
     steps = []
     while True:
         steps.append((x, y))
-        h = grid[y][x]
 
         for nx, ny in neighbors(grid, x, y):
             # no backtrack
@@ -68,48 +67,41 @@ def descend(grid, basins, start):
                 continue
 
             # downhill or flat only
-            nh = grid[ny][nx]
-            if nh >= h:
+            if grid[ny][nx] >= grid[y][x]:
                 continue
-
-            if b := basins[ny][nx]:
-                for sx, sy in steps:
-                    if grid[sy][sx] < 9:
-                        basins[sy][sx] = b
-                return steps
 
             x, y = nx, ny
             break
         else:
             break
-    
+
+    if is_low_point(grid, x, y):
+        basins[y][x] = (x, y)
+
+    if b := basins[y][x]:
+        for sx, sy in steps:
+            if grid[sy][sx] < 9:
+                basins[sy][sx] = b
+        return steps
+
     return steps
 
 
 def find_risk(grid):
-    total_risk = 0
     basins = [[None for _ in range(len(grid[0]))] for _ in range(len(grid))]
     remaining = set(list(itergrid(grid)))
 
     while remaining:
-        start = remaining.pop()
-        steps = descend(grid, basins, start)
+        steps = descend(grid, basins, remaining.pop())
         remaining = remaining - set(steps)
-        x, y = steps[-1]
-        if not is_low_point(grid, x, y):
-            continue
-        for sx, sy in steps:
-            if grid[sy][sx] < 9:
-                basins[sy][sx] = (x, y)
-        # print(f"low point: {x, y}, height: {grid[y][x]}")
-        total_risk += grid[y][x] + 1
 
-    basins_by_size = Counter([basins[y][x] for x, y in itergrid(basins) if basins[y][x]])
-    top_sizes = sorted(basins_by_size.values(), reverse=True)
-    basinprod = math.prod(top_sizes[0:3])
+    basin_sizes = Counter([basins[y][x] for x, y in itergrid(basins) if basins[y][x]])
+    top_sizes = sorted(basin_sizes.values(), reverse=True)
+    total_risk = sum([grid[y][x] + 1 for x, y in basin_sizes.keys()])
+    basin_product = math.prod(top_sizes[0:3])
 
-    return f"risk {total_risk}, basin product {basinprod}"
+    return f"risk {total_risk}, basin product {basin_product}"
 
 
-print("Part 1 (test): ", find_risk(parse(test_input1)))
-print("Part 1: ", find_risk(parse(raw_input)))
+print("Basins (test): ", find_risk(parse(test_input1)))
+print("Basins: ", find_risk(parse(raw_input)))
