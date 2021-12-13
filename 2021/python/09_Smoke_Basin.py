@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-import math
 from collections import Counter
 from os.path import join, dirname, realpath
+
+import math
 
 input_file = join(dirname(realpath(__file__)), '..', 'inputs', '09.txt')
 raw_input = open(input_file, 'r').read()
@@ -19,17 +20,17 @@ def parse(raw):
     return [[int(s.strip()) for s in line.strip()] for line in raw.split("\n") if line.strip()]
 
 
-def itergrid(grid):
-    for y in range(len(grid)):
-        for x in range(len(grid[0])):
-            yield x, y
-
-
 def next_non_visited(visited):
     for x, y in itergrid(visited):
         if not visited[y][x]:
             return x, y
     return None
+
+
+def itergrid(grid):
+    for y in range(len(grid)):
+        for x in range(len(grid[0])):
+            yield x, y
 
 
 def neighbors(grid, x, y):
