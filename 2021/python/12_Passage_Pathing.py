@@ -69,18 +69,18 @@ def navigate(graph, path):
     visited_small = set([x for x in path if not x.isupper()])
     other_paths = []
     while True:
-        x = path[-1]
-        if not x.isupper():
-            visited_small.add(x)
-        if x == 'end':
-            break
-        valid_next_steps = [n for n in graph[x] if n not in visited_small]
+        head = path[-1]
+        valid_next_steps = [n for n in graph[head] if n not in visited_small]
         if not valid_next_steps:
             break
         head, rest = valid_next_steps[0], valid_next_steps[1:]
         for s in rest:
             other_paths.append(path + [s])
         path.append(head)
+        if not head.isupper():
+            visited_small.add(head)
+        if head == 'end':
+            break
 
     return path, other_paths
 
