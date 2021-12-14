@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from collections import defaultdict
+from collections import defaultdict, Counter
 from os.path import join, dirname, realpath
 
 input_file = join(dirname(realpath(__file__)), '..', 'inputs', '12.txt')
@@ -65,22 +65,44 @@ def parse(raw):
     return graph
 
 
+class Tracker:
+    def __init__(self, path):
+        self.twice_done = False
+        self.smalls = defaultdict(int)
+        self.visit(*path)
+
+    def can_visit(self, s):
+        if s.isupper() or self.smalls[s] == 0:
+            return True
+        if self.smalls[s] > 0 and not self.twice_done and not s == 'start':
+            return True
+        return False
+
+    def visit(self, *path):
+        for s in path:
+            if not self.can_visit(s):
+                raise Exception("cannot visit")
+            if not s.isupper():
+                self.smalls[s] += 1
+                if self.smalls[s] > 1:
+                    self.twice_done = True
+
+
 def navigate(graph, path):
-    visited_small = set([x for x in path if not x.isupper()])
+    tracker = Tracker(path)
     other_paths = []
     while True:
         head = path[-1]
-        valid_next_steps = [n for n in graph[head] if n not in visited_small]
+        if head == 'end':
+            break
+        valid_next_steps = [s for s in graph[head] if tracker.can_visit(s)]
         if not valid_next_steps:
             break
         head, rest = valid_next_steps[0], valid_next_steps[1:]
         for s in rest:
             other_paths.append(path + [s])
         path.append(head)
-        if not head.isupper():
-            visited_small.add(head)
-        if head == 'end':
-            break
+        tracker.visit(head)
 
     return path, other_paths
 
