@@ -140,6 +140,42 @@ def do_folds(coords, folds, debug=False):
     print_grid(grid)
 
 
-print("test", do_folds(*parse(test_input1), debug=True))
+def do_folds_alternate(coords, folds, debug=False):
+    print("starting folds")
+    coords = set(tuple((x, y) for x, y in coords))
+    print_grid(to_grid(coords))
+    for i, (axis, index) in enumerate(folds):
+        new_coords = set()
+        # apply fold
+        for x, y in coords:
+            if axis == 'x':
+                if x < index:
+                    new_coords.add((x, y))
+                    continue
+                if x == index:
+                    # lost on fold. shouldn't happen
+                    continue
+                x = x - 2 * (x - index)
+                new_coords.add((x, y))
+            else:
+                if y < index:
+                    new_coords.add((x, y))
+                    continue
+                if y == index:
+                    # lost on fold. shouldn't happen
+                    continue
+                new_y = y - 2 * (y - index)
+                new_coords.add((x, new_y))
+        prex, prey = max([y for x, y in coords]), max([x for x, y in coords])
+        postx, posty = max([y for x, y in new_coords]), max([x for x, y in new_coords])
+        print(f"fold={i + 1} axis={axis} index={index} dim-before={(prex, prey)} dim-after={(postx, posty)} dots={len(new_coords)}")
+        coords = new_coords
+        if debug:
+            print_grid(to_grid(coords))
 
-print("part 1", do_folds(*parse(raw_input)))
+    print_grid(to_grid(coords))
+
+
+print("test", do_folds_alternate(*parse(test_input1), debug=True))
+
+print("part 1", do_folds_alternate(*parse(raw_input)))
