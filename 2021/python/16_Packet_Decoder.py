@@ -44,18 +44,47 @@ class Parser:
         self.raw = raw
         self.i = 0
         self.end_i = len(raw) - 1
-        self.stack = []
         self.version_sum = 0
         self.literals = []
-        self.sub_bits_left = None
-        self.sub_packets_left = None
+        self.stack = []
 
     def consume(self, n):
         result = self.raw[self.i:self.i + n]
         self.i += n
-        if self.sub_bits_left is not None:
-            self.sub_bits_left -= n
         return result
+
+    def finished(self):
+        if self.i >= self.end_i:
+            print("done")
+            return True
+        if (self.end_i - self.i) < 4 and set(self.raw[self.i:]) == {"0"}:
+            print("consuming residual zeros", self.raw[self.i:])
+            return True
+
+        # pop finished
+        while self.stack:
+            state = self.stack[-1]
+            consumed = self.i - state['start_i']
+            if 'bits' in state and consumed >= state['bits']:
+                print(f"subpacket done (bits)")
+                self.stack.pop()
+            elif 'packets' in state and state['packets'] == 0:
+                self.stack.pop()
+                print(f"subpacket done (bits)")
+            else:
+                break
+
+        if not self.stack:
+            return True
+
+        state = self.stack[-1]
+        if 'packets' in state:
+            state['packets'] -= 1
+
+        remaining_i = self.end_i - self.i
+        print(f"> packet_state={state} len(stack)={len(self.stack)} remaining_i={remaining_i}")
+
+        return False
 
     def consume_literal(self):
         binary_s = ""
@@ -81,24 +110,20 @@ class Parser:
         else:
             return None, binary_s_to_int(self.consume(11))
 
-    def packet_done(self):
-        if self.sub_bits_left is not None:
-            self.sub_bits_left -= 1
-
-    def finished(self):
-        if (self.end_i - self.i) < 4 and set(self.raw[self.i:]) == {"0"}:
-            print("consuming residual zeros", self.raw[self.i:])
-            return True
-        if self.sub_bits_left is not None and self.sub_bits_left == 0:
-            print("sub bits done")
-            return True
-        if self.sub_packets_left is not None and self.sub_packets_left == 0:
-            print("sub bits done")
-            return True
-        return False
+    def start_packet(self, sub_bits, sub_packets):
+        print(f"starting sub packet (bits,packets)={(sub_bits, sub_packets)}")
+        state = {
+            'start_i': self.i,
+        }
+        if sub_bits:
+            state['bits'] = sub_bits
+        if sub_packets:
+            state['packets'] = sub_packets
+        self.stack.append(state)
 
     def parse(self):
-        while self.i < self.end_i and not self.finished():
+        self.start_packet(None, 1)
+        while not self.finished():
             version = binary_s_to_int(self.consume(3))
             type_id = binary_s_to_int(self.consume(3))
             self.version_sum += version
@@ -106,17 +131,12 @@ class Parser:
 
             if type_id == 4:
                 self.consume_literal()
-                self.packet_done()
                 continue
 
             sub_bits, sub_count = self.consume_operator()
-            if self.sub_bits_left is None and self.sub_packets_left is None:
-                self.sub_bits_left = sub_bits
-                self.sub_packets_left = sub_count
-                print(f"starting sub packet. bits={sub_bits} count={sub_count}")
-            else:
-                print("starting sub-sub packet")
-            self.packet_done()
+            if not sub_bits and not sub_count:
+                raise Exception("empty sub packet")
+            self.start_packet(sub_bits, sub_count)
 
 
 def go(raw):
