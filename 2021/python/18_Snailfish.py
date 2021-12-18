@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import itertools
 from os.path import join, dirname, realpath
 
 import math
@@ -100,7 +101,7 @@ def magnitude(line):
     return pending[0]
 
 
-def go(lines, debug=False):
+def part1(lines, debug=False):
     if not lines:
         return lines
     agg = lines[0]
@@ -111,11 +112,22 @@ def go(lines, debug=False):
     return magnitude(agg)
 
 
+def part2(lines, debug=False):
+    max_mag = 0
+    for l1, l2 in itertools.permutations(lines, 2):
+        m = part1([l1, l2], debug)
+        if m > max_mag:
+            max_mag = m
+    return max_mag
+
+
 print("test magnitude. expected=143: ", magnitude(parse("[[1,2],[[3,4],5]]")[0]))
 print("test magnitude. expected=1384: ", magnitude(parse("[[[[0,7],4],[[7,8],[6,0]]],[8,1]]")[0]))
 print("test magnitude. expected=445: ", magnitude(parse("[[[[1,1],[2,2]],[3,3]],[4,4]]")[0]))
 print("test magnitude. expected=791: ", magnitude(parse("[[[[3,0],[5,3]],[4,4]],[5,5]]")[0]))
 print("test magnitude. expected=1137: ", magnitude(parse("[[[[5,0],[7,4]],[5,5]],[6,6]]")[0]))
 print("test magnitude. expected=3488: ", magnitude(parse("[[[[8,7],[7,7]],[[8,6],[7,7]]],[[[0,7],[6,6]],[8,7]]]")[0]))
-print("test: ", go(parse(test_input), debug=True))
-print("part 1: ", go(parse(raw_input)))
+print("test part 1: ", part1(parse(test_input), debug=True))
+print("part 1: ", part1(parse(raw_input)))
+print("test part 2 (expected 3993): ", part2(parse(test_input)))
+print("part 2: ", part2(parse(raw_input)))
