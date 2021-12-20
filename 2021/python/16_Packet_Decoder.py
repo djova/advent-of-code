@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-from functools import reduce
 from os.path import join, dirname, realpath
 
-import heapq
-from builtins import int
+from functools import reduce
 
 input_file = join(dirname(realpath(__file__)), '..', 'inputs', '16.txt')
 raw_input = open(input_file, 'r').read()
