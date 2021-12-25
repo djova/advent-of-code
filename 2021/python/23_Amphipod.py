@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 from collections import defaultdict
-from os.path import join, dirname, realpath
+from functools import cached_property
 
-import functools
-import itertools
-import re
-
-input_file = join(dirname(realpath(__file__)), '..', 'inputs', '23.txt')
-raw_input = open(input_file, 'r').read()
+import heapq
 
 test_input_1 = """\
 #############
@@ -17,11 +12,39 @@ test_input_1 = """\
   #########
 """
 
+test_input_2 = """\
+#############
+#...........#
+###B#C#B#D###
+  #D#C#B#A#
+  #D#B#A#C#
+  #A#D#C#A#
+  #########
+"""
+
 done_example = """\
 #############
 #...........#
 ###A#B#C#D###
   #A#B#C#D#
+  #########
+"""
+
+part_1_input = """\
+#############
+#...........#
+###D#B#D#A###
+  #C#C#A#B#
+  #########
+"""
+
+part_2_input = """\
+#############
+#...........#
+###D#B#D#A###
+  #D#C#B#A#
+  #D#B#A#C#
+  #C#C#A#B#
   #########
 """
 
@@ -50,25 +73,26 @@ a_costs = {
     'D': 1000,
 }
 
-room_targets = {
-    0: 'A',
-    1: 'B',
-    2: 'C',
-    3: 'D',
+desired_room_x = {
+    'A': 3,
+    'B': 5,
+    'C': 7,
+    'D': 9,
 }
 
-desired_rooms = {v: k for k, v in room_targets.items()}
+desired_a = {v: k for k, v in desired_room_x.items()}
 
-room_indexes = {
-    0: ((3, 2), (3, 3)),
-    1: ((5, 2), (5, 3)),
-    2: ((7, 2), (7, 3)),
-    3: ((9, 2), (9, 3)),
+invalid_hallway_points = {
+    (3, 1),
+    (5, 1),
+    (7, 1),
+    (9, 1),
 }
 
-
-def print_grid(grid):
-    print("\n" + "\n".join([''.join(row) for row in grid]) + "\n")
+hallway_endpoints = (
+    (1, 1),
+    (12, 1)
+)
 
 
 def itergrid(grid):
@@ -77,40 +101,9 @@ def itergrid(grid):
             yield x, y
 
 
-def is_done(grid):
-    for r_i, rooms in room_indexes.items():
-        target_a = room_targets[r_i]
-        for x, y in rooms:
-            if grid[y][x] != target_a:
-                return False
-    return True
-
-
-def a_positions(grid):
-    positions = defaultdict(list)
-    for x, y in itergrid(grid):
-        c = grid[y][x]
-        if c in a_costs:
-            positions[c].append((x, y))
-    return positions
-
-
-def ideal_move(grid, x, y):
-    a = grid[y][x]
-    if a not in a_costs:
-        raise Exception("invalid")
-    desired_positions = sorted(room_indexes[desired_rooms[a]], key=lambda p: p[1], reverse=True)
-    for px, py in desired_positions:
-        if (x, y) == (px, py):
-            return None
-        if grid[py][px] == a:
-            continue
-        return (x, y), (px, py)
-
-
-def shortest_path(grid, from_p, to_p):
-    x, y = from_p
-    to_x, to_y = to_p
+def shortest_path(from_p, to_p):
+    (x, y), (to_x, to_y) = from_p, to_p
+    steps = 0
     while (x, y) != (to_x, to_y):
         dx, dy = to_x - x, to_y - y
         if dx == 0:
@@ -121,118 +114,216 @@ def shortest_path(grid, from_p, to_p):
         else:
             # another room
             y -= 1
-        yield x, y
+        steps += 1
+        yield (x, y), steps
 
 
-def next_blocking_pos(grid, from_p, to_p):
-    to_x, to_y = to_p
-    if grid[to_y][to_x] != '.':
-        return to_x, to_y
-    for x, y in shortest_path(grid, from_p, to_p):
-        if grid[y][x] != '.':
-            if grid[y][x] not in a_costs:
-                raise Exception("invalid")
-            return x, y
-    return None
+def distance(from_p, to_p):
+    (x, y), (to_x, to_y) = from_p, to_p
+    if x == to_x:
+        return abs(y - to_y)
+    return abs(to_x - x) + abs(y - to_y) + abs(1 - y)
 
 
-def do_move(grid, pending_moves, move_from, move_to):
-    (from_x, from_y), (to_x, to_y) = move_from, move_to
-    print(f"move {grid[from_y][from_x]}: {move_from} -> {move_to}")
-    grid[to_y][to_x] = grid[from_y][from_x]
-    grid[from_y][from_x] = '.'
-    for i, (pend_from, pend_to) in enumerate(pending_moves):
-        if pend_from == move_from:
-            pending_moves[i] = (move_to, pend_to)
+class Board:
+    def __init__(self, grid):
+        self.grid = [r[:] for r in grid]
+        self.room_depth = len(self.grid) - 3
+        self.total_cost = 0
+        self.moves = ()
+
+    def copy(self):
+        nb = Board(self.grid)
+        nb.total_cost = self.total_cost
+        nb.moves = self.moves
+        return nb
+
+    def move(self, move_from, move_to, m_cost):
+        nb = self.copy()
+        (from_x, from_y), (to_x, to_y) = move_from, move_to
+        nb.grid[to_y][to_x] = nb.grid[from_y][from_x]
+        nb.grid[from_y][from_x] = '.'
+        nb.moves = nb.moves + ((move_from, move_to, m_cost),)
+        nb.total_cost += m_cost
+        return nb
+
+    @cached_property
+    def a_positions(self):
+        positions = defaultdict(list)
+        for x, y in itergrid(self.grid):
+            c = self.grid[y][x]
+            if c in a_costs:
+                positions[c].append((x, y))
+        return positions
+
+    @cached_property
+    def room_assignments(self):
+        result = []
+        for a, room_x in desired_room_x.items():
+            a_pos = self.a_positions[a]
+            room_y = 1 + self.room_depth
+            end_room = (room_x, room_y)
+            a_pos = sorted(a_pos, key=lambda p: distance(p, end_room))
+            for from_pos, i in zip(a_pos, range(self.room_depth)):
+                to_pos = (room_x, room_y - i)
+                result.append((a, from_pos, to_pos))
+        return result
+
+    def next_valid_room_pos(self, x):
+        y = 1 + self.room_depth
+        for i in range(self.room_depth):
+            a = self.grid[y - i][x]
+            if a == '.':
+                return (x, y)
+            if a != desired_a[x]:
+                return None
+        return None
+
+    @cached_property
+    def estimated_cost(self):
+        cost = 0
+        for a, from_pos, to_pos in self.room_assignments:
+            if from_pos == to_pos:
+                continue
+            from_x, from_y = from_pos
+            a = self.grid[from_y][from_x]
+            cost += distance(from_pos, to_pos) * a_costs[a]
+        return cost
+
+    @cached_property
+    def total_heuristic_cost(self):
+        return self.estimated_cost + self.total_cost
+
+    def __lt__(self, other):
+        return self.total_heuristic_cost < other.total_heuristic_cost
+
+    def print(self):
+        print("\n" + "\n".join([''.join(row) for row in self.grid]) + "\n")
+
+    def clear_path(self, from_pos, to_pos):
+        last_pos, last_steps = None, None
+        for (next_x, next_y), steps in shortest_path(from_pos, to_pos):
+            if self.grid[next_y][next_x] != '.':
+                return None, None
+            last_pos, last_steps = (next_x, next_y), steps
+        return last_pos, last_steps
+
+    def best_valid_room_pos(self, to_pos):
+        x, _ = to_pos
+        max_y = 1 + self.room_depth
+        for i in range(self.room_depth):
+            y = max_y - i
+            a = self.grid[y][x]
+            if a == '.':
+                return x, y
+            if a != desired_a[x]:
+                return None
+        return None
+
+    def possible_moves(self):
+        for a, from_pos, to_pos in self.room_assignments:
+            if from_pos == to_pos:
+                continue
+
+            to_pos = self.best_valid_room_pos(to_pos)
+            if to_pos:
+                to_pos, steps = self.clear_path(from_pos, to_pos)
+                if to_pos:
+                    yield from_pos, to_pos, steps * a_costs[a]
+                    continue
+
+            if from_pos[1] == 1:
+                # hallway
+                continue
+
+            for d in hallway_endpoints:
+                for next_pos, steps in shortest_path(from_pos, d):
+                    next_x, next_y = next_pos
+                    if self.grid[next_y][next_x] != '.':
+                        break
+                    if next_pos in invalid_hallway_points:
+                        continue
+                    if next_y > 1:
+                        continue
+                    yield from_pos, next_pos, steps * a_costs[a]
 
 
-descending_cost_priority = [
-    'D',
-    'C',
-    'B',
-    'A',
-]
-
-
-def next_best_move(grid):
-    a_pos = a_positions(grid)
-    hallway_pos = [(x, y) for x, y in itertools.chain(*a_pos.values()) if y == 1]
-    if hallway_pos:
-        ideal_moves = [ideal_move(grid, x, y) for x, y in hallway_pos]
-        ideal_moves = [m for m in ideal_moves if m]
-        ideal_moves = sorted(ideal_moves, key=lambda p: len(list(shortest_path(grid, *p))))
-        if ideal_moves:
-            return ideal_moves[0]
-    for a in descending_cost_priority:
-        ideal_moves = [ideal_move(grid, x, y) for x, y in a_pos[a]]
-        ideal_moves = [m for m in ideal_moves if m]
-        ideal_moves = sorted(ideal_moves, key=lambda p: len(list(shortest_path(grid, *p))), reverse=True)
-        if ideal_moves:
-            return ideal_moves[0]
-    return None
-
-
-hallway_positions = [
-    (1, 1),
-    (2, 1),
-    (4, 1),
-    (6, 1),
-    (8, 1),
-    (10, 1),
-    (11, 1),
-]
-
-
-def move_direction(move):
-    (from_x, from_y), (to_x, to_y) = move
-    if to_x < from_x:
-        return "left"
-    return "right"
-
-
-def move_out_of_the_way(grid, blocked_move, x, y):
-    (from_x, from_y), (to_x, to_y) = blocked_move
-    valid_pos = [(x, y) for x, y in hallway_positions if x < to_x or x > from_x]
-    empty_pos = [(x, y) for x, y in valid_pos if grid[y][x] == '.']
-    preferred_pos = sorted(empty_pos, key=lambda p: abs(p[0] - x))
-    return (x, y), preferred_pos[0]
-
-
-def print_state(grid, pending_move, blocking_pos, debug=True):
-    if not debug:
-        return
-    (from_x, from_y), (to_x, to_y) = pending_move
-    bx, by = blocking_pos
-    print(f"pending move {grid[from_y][from_x]}: {pending_move[0]} -> {pending_move[1]}, blocked_by {grid[by][bx]}: {blocking_pos}")
-
-
-def go(grid, debug=True):
+def find_path(o_board, debug=False):
     print("starting grid")
-    print_grid(grid)
-    pending_moves = []
-    while not is_done(grid):
-        if not pending_moves:
-            m = next_best_move(grid)
-            pending_moves.append(m)
-        m = pending_moves.pop()
-        b_pos = next_blocking_pos(grid, *m)
-        if b_pos:
-            print_state(grid, m, b_pos, debug)
-            pending_moves.append(m)
-            pending_moves.append(move_out_of_the_way(grid, m, *b_pos))
-        else:
-            do_move(grid, pending_moves, *m)
-            print_grid(grid)
+    o_board.print()
+    states = []
+    heapq.heappush(states, o_board.copy())
+    i = 0
+    while states:
+        board = heapq.heappop(states)
+        if board.estimated_cost == 0:
+            return board
 
-    return 1
+        for from_pos, to_pos, m_cost in board.possible_moves():
+            n_board = board.move(from_pos, to_pos, m_cost)
+            heapq.heappush(states, n_board)
+
+        i += 1
+        if i % 10000 == 0:
+            if debug:
+                replay_board(o_board, board)
+            print(f"i={i} len(states)={len(states)} h_cost={board.total_heuristic_cost} e_cost={board.estimated_cost} t_cost={board.total_cost} len(moves)={len(board.moves)}")
+            board.print()
+
+
+def replay_board(o_board, board):
+    print("=============== replay ================")
+    o_board.print()
+    for from_pos, to_pos, m_cost in board.moves:
+        x, y = from_pos
+        print(f"move {o_board.grid[y][x]}: {from_pos} -> {to_pos} cost={m_cost}")
+        o_board = o_board.move(from_pos, to_pos, m_cost)
+        o_board.print()
+    print("=============== ending stats ================")
+    print(f"finished with e_cost={o_board.estimated_cost} t_cost={o_board.total_cost} sanity_cost={sum(c for _, _, c in o_board.moves)}")
+
+
+def go(board):
+    end_board = find_path(board)
+    replay_board(board, end_board)
+
+
+test_state_problem = """\
+#############
+#AA.......BC#
+###.#B#D#.###
+###.#C#B#.###
+###D#B#A#D###
+###C#C#A#D###
+#############
+"""
 
 
 def run_tests():
     print("running tests")
-    assert not is_done(parse(test_input_1))
-    assert is_done(parse(done_example))
+    assert Board(parse(test_input_1)).estimated_cost > 0
+    assert Board(parse(done_example)).estimated_cost == 0
+    print(f"room assignments")
+    b = Board(parse(test_input_1))
+    b.print()
+    for a, from_pos, to_pos in b.room_assignments:
+        print(f"ideal {a}: {from_pos} -> {to_pos}")
+
+    print(f"testing problematic state")
+    b = Board(parse(test_state_problem))
+    b.print()
+    for from_pos, to_pos, cost in b.possible_moves():
+        x, y = from_pos
+        a = b.grid[y][x]
+        print(f"move {a}: {from_pos} -> {to_pos}")
+
     print("tests complete")
 
 
-run_tests()
-print("test part 1", go(parse(test_input_1)))
+# run_tests()
+# print("test part 1", go(Board(parse(test_input_1))))
+print("test part 2", go(Board(parse(test_input_2))))
+
+# correct: 14460
+# print("part 1", go(Board(parse(part_1_input))))
+# print("part 2", go(Board(parse(part_2_input))))
