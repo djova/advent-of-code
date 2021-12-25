@@ -126,28 +126,41 @@ def distance(from_p, to_p):
 
 
 class Board:
-    def __init__(self, grid):
+    def __init__(self, grid, is_copy=False):
         self.grid = [r[:] for r in grid]
         self.room_depth = len(self.grid) - 3
         self.total_cost = 0
         self.moves = ()
+        # move_from -> (move_to, e_cost)
+        self.remaining_a = {}
+        if not is_copy:
+            self.init_remaining()
+
+    def init_remaining(self):
+        for a, from_pos, to_pos in self.room_assignments():
+            self.remaining_a[from_pos] = (to_pos, distance(from_pos, to_pos) * a_costs[a])
 
     def copy(self):
-        nb = Board(self.grid)
+        nb = Board(self.grid, is_copy=True)
         nb.total_cost = self.total_cost
         nb.moves = self.moves
+        nb.remaining_a = dict(self.remaining_a)
         return nb
 
     def move(self, move_from, move_to, m_cost):
         nb = self.copy()
         (from_x, from_y), (to_x, to_y) = move_from, move_to
+        a = self.grid[from_y][from_x]
         nb.grid[to_y][to_x] = nb.grid[from_y][from_x]
         nb.grid[from_y][from_x] = '.'
         nb.moves = nb.moves + ((move_from, move_to, m_cost),)
         nb.total_cost += m_cost
+        orig_move_to, e_cost = nb.remaining_a.pop(move_from)
+        # nb.remaining_a[move_to] = (orig_move_to, distance(move_to, orig_move_to) * a_costs[a])
+        # TODO: wtf is wrong here
+        nb.init_remaining()
         return nb
 
-    @cached_property
     def a_positions(self):
         positions = defaultdict(list)
         for x, y in itergrid(self.grid):
@@ -156,11 +169,11 @@ class Board:
                 positions[c].append((x, y))
         return positions
 
-    @cached_property
     def room_assignments(self):
+        a_positions = self.a_positions()
         result = []
         for a, room_x in desired_room_x.items():
-            a_pos = self.a_positions[a]
+            a_pos = a_positions[a]
             room_y = 1 + self.room_depth
             end_room = (room_x, room_y)
             a_pos = sorted(a_pos, key=lambda p: distance(p, end_room))
@@ -179,23 +192,19 @@ class Board:
                 return None
         return None
 
-    @cached_property
     def estimated_cost(self):
         cost = 0
-        for a, from_pos, to_pos in self.room_assignments:
+        for from_pos, (to_pos, e_cost) in self.remaining_a.items():
             if from_pos == to_pos:
                 continue
-            from_x, from_y = from_pos
-            a = self.grid[from_y][from_x]
-            cost += distance(from_pos, to_pos) * a_costs[a]
+            cost += e_cost
         return cost
 
-    @cached_property
     def total_heuristic_cost(self):
-        return self.estimated_cost + self.total_cost
+        return self.estimated_cost() + self.total_cost
 
     def __lt__(self, other):
-        return self.total_heuristic_cost < other.total_heuristic_cost
+        return self.total_heuristic_cost() < other.total_heuristic_cost()
 
     def print(self):
         print("\n" + "\n".join([''.join(row) for row in self.grid]) + "\n")
@@ -221,9 +230,12 @@ class Board:
         return None
 
     def possible_moves(self):
-        for a, from_pos, to_pos in self.room_assignments:
+        for from_pos, (to_pos, _) in self.remaining_a.items():
             if from_pos == to_pos:
                 continue
+
+            from_x, from_y = from_pos
+            a = self.grid[from_y][from_x]
 
             to_pos = self.best_valid_room_pos(to_pos)
             if to_pos:
@@ -256,7 +268,7 @@ def find_path(o_board, debug=False):
     i = 0
     while states:
         board = heapq.heappop(states)
-        if board.estimated_cost == 0:
+        if board.estimated_cost() == 0:
             return board
 
         for from_pos, to_pos, m_cost in board.possible_moves():
@@ -267,8 +279,9 @@ def find_path(o_board, debug=False):
         if i % 10000 == 0:
             if debug:
                 replay_board(o_board, board)
-            print(f"i={i} len(states)={len(states)} h_cost={board.total_heuristic_cost} e_cost={board.estimated_cost} t_cost={board.total_cost} len(moves)={len(board.moves)}")
+            print(f"i={i} len(states)={len(states)} h_cost={board.total_heuristic_cost()} e_cost={board.estimated_cost()} t_cost={board.total_cost} len(moves)={len(board.moves)}")
             board.print()
+    raise Exception("failed")
 
 
 def replay_board(o_board, board):
@@ -280,12 +293,13 @@ def replay_board(o_board, board):
         o_board = o_board.move(from_pos, to_pos, m_cost)
         o_board.print()
     print("=============== ending stats ================")
-    print(f"finished with e_cost={o_board.estimated_cost} t_cost={o_board.total_cost} sanity_cost={sum(c for _, _, c in o_board.moves)}")
+    print(f"finished with e_cost={o_board.estimated_cost()} t_cost={o_board.total_cost} sanity_cost={sum(c for _, _, c in o_board.moves)}")
 
 
-def go(board):
-    end_board = find_path(board)
+def go(board, debug=False):
+    end_board = find_path(board, debug)
     replay_board(board, end_board)
+    return end_board.total_cost
 
 
 test_state_problem = """\
@@ -298,15 +312,23 @@ test_state_problem = """\
 #############
 """
 
+test_filter_completed = """\
+#############
+#.......D...#
+###.#B#C#D###
+###A#B#C#A###
+#############
+"""
+
 
 def run_tests():
     print("running tests")
-    assert Board(parse(test_input_1)).estimated_cost > 0
-    assert Board(parse(done_example)).estimated_cost == 0
+    assert Board(parse(test_input_1)).estimated_cost() > 0
+    assert Board(parse(done_example)).estimated_cost() == 0
     print(f"room assignments")
     b = Board(parse(test_input_1))
     b.print()
-    for a, from_pos, to_pos in b.room_assignments:
+    for a, from_pos, to_pos in b.room_assignments():
         print(f"ideal {a}: {from_pos} -> {to_pos}")
 
     print(f"testing problematic state")
@@ -317,11 +339,21 @@ def run_tests():
         a = b.grid[y][x]
         print(f"move {a}: {from_pos} -> {to_pos}")
 
+    print(f"test filter completed")
+    b = Board(parse(test_filter_completed))
+    b.print()
+    for from_pos, to_pos, cost in b.possible_moves():
+        x, y = from_pos
+        a = b.grid[y][x]
+        print(f"move {a}: {from_pos} -> {to_pos}")
     print("tests complete")
 
 
+
 # run_tests()
-# print("test part 1", go(Board(parse(test_input_1))))
+# print("test part 1", go(Board(parse(test_input_1)), debug=True))
+# print("part 1", go(Board(parse(part_1_input))))
+
 print("test part 2", go(Board(parse(test_input_2))))
 
 # correct: 14460
