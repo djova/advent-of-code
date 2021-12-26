@@ -97,12 +97,6 @@ hallway_endpoints = (
 )
 
 
-def itergrid(grid):
-    for y in range(len(grid)):
-        for x in range(len(grid[0])):
-            yield x, y
-
-
 def shortest_path(from_p, to_p):
     (x, y), (to_x, to_y) = from_p, to_p
     steps = 0
@@ -154,44 +148,39 @@ class Board:
             print(f"move {a}: {from_pos} -> {to_pos}, cost={m_cost}")
         return nb
 
-    def a_positions(self):
-        positions = defaultdict(list)
-        for x, y in itergrid(self.grid):
-            c = self.grid[y][x]
-            if c in a_costs:
-                positions[c].append((x, y))
-        return positions
-
-    def room_assignments(self):
-        a_positions = self.a_positions()
-        result = []
-        for a, room_x in desired_room_x.items():
-            a_pos = a_positions[a]
-            room_y = 1 + self.room_depth
-            end_room = (room_x, room_y)
-            a_pos = sorted(a_pos, key=lambda p: distance(p, end_room))
-            for from_pos, i in zip(a_pos, range(self.room_depth)):
-                to_pos = (room_x, room_y - i)
-                result.append((a, from_pos, to_pos))
-        return result
-
-    def next_valid_room_pos(self, x):
-        y = 1 + self.room_depth
-        for i in range(self.room_depth):
-            a = self.grid[y - i][x]
-            if a == '.':
-                return (x, y)
-            if a != desired_a[x]:
-                return None
-        return None
-
-    def estimated_cost(self):
-        cost = 0
-        for a, from_pos, to_pos in self.room_assignments():
-            if from_pos == to_pos:
+    def room_members(self, room_x):
+        da = desired_a[room_x]
+        valid, invalid = [], []
+        room_valid = True
+        for a, (x, y) in self.iter_room(room_x):
+            if room_valid and a == da:
+                valid.append((a, (x, y)))
                 continue
-            cost += a_costs[a] * distance(from_pos, to_pos)
-        return cost
+            if a != '.':
+                room_valid = False
+                invalid.append((a, (x, y)))
+        return valid, invalid
+
+    @cached_property
+    def estimated_cost(self):
+        room_valid_member_count = defaultdict(int)
+        invalid_members = list(self.hallway_members())
+        for room_x in rooms:
+            valid, invalid = self.room_members(room_x)
+            room_valid_member_count[room_x] += len(valid)
+            invalid_members.extend(invalid)
+
+        estimated_cost = 0
+        for a, from_pos in invalid_members:
+            room_x = desired_room_x[a]
+            max_y = 1 + self.room_depth
+            next_y = max_y - room_valid_member_count[room_x]
+            to_pos = (room_x, next_y)
+            m_cost = distance(from_pos, to_pos) * a_costs[a]
+            estimated_cost += m_cost
+            room_valid_member_count[room_x] += 1
+
+        return estimated_cost
 
     def is_done(self):
         invalid, valid = self.room_states()
@@ -200,7 +189,7 @@ class Board:
         return True
 
     def total_heuristic_cost(self):
-        return self.total_cost
+        return self.estimated_cost + self.total_cost
 
     def __lt__(self, other):
         return self.total_heuristic_cost() < other.total_heuristic_cost()
@@ -213,18 +202,6 @@ class Board:
             if self.grid[next_y][next_x] != '.':
                 return False
         return True
-
-    def best_valid_room_pos(self, to_pos):
-        x, _ = to_pos
-        max_y = 1 + self.room_depth
-        for i in range(self.room_depth):
-            y = max_y - i
-            a = self.grid[y][x]
-            if a == '.':
-                return x, y
-            if a != desired_a[x]:
-                return None
-        return None
 
     def iter_room(self, room_x):
         max_y = 1 + self.room_depth
@@ -326,7 +303,7 @@ def find_path(o_board, debug=False):
         if i % 10000 == 0:
             if debug:
                 replay_board(o_board, board)
-            print(f"i={i} len(states)={len(states)} h_cost={board.total_heuristic_cost()} e_cost={board.estimated_cost()} t_cost={board.total_cost} len(moves)={len(board.moves)}")
+            print(f"i={i} len(states)={len(states)} h_cost={board.total_heuristic_cost()} e_cost={board.estimated_cost} t_cost={board.total_cost} len(moves)={len(board.moves)}")
             board.print()
 
         if not states:
@@ -342,7 +319,7 @@ def replay_board(o_board, board):
         o_board = o_board.move(from_pos, to_pos, debug=True)
         o_board.print()
     print("=============== ending stats ================")
-    print(f"finished with e_cost={o_board.estimated_cost()} t_cost={o_board.total_cost} sanity_cost={sum(c for _, _, c in o_board.moves)}")
+    print(f"finished with e_cost={o_board.estimated_cost} t_cost={o_board.total_cost}")
 
 
 def go(board, debug=False):
@@ -374,18 +351,14 @@ def run_tests():
     print("running tests")
     assert not Board(parse(test_input_1)).is_done()
     assert Board(parse(done_example)).is_done()
+    assert Board(parse(test_input_1)).estimated_cost > 0
+    assert Board(parse(done_example)).estimated_cost == 0
 
     print(f"test distance")
     assert distance((9, 2), (10, 1)) == 2
     assert distance((9, 2), (7, 2)) == 4
     assert distance((9, 2), (7, 3)) == 5
     assert distance((9, 1), (9, 3)) == 2
-
-    print(f"room assignments")
-    b = Board(parse(test_input_1))
-    b.print()
-    for a, from_pos, to_pos in b.room_assignments():
-        print(f"ideal {a}: {from_pos} -> {to_pos}")
 
     print(f"testing problematic state")
     b = Board(parse(test_state_problem))
@@ -405,12 +378,9 @@ def run_tests():
     print("tests complete")
 
 
-# run_tests()
-print("test part 1 (expected 12521)", go(Board(parse(test_input_1)), debug=False))
-# print("part 1 (answer 14460)", go(Board(parse(part_1_input))))
+run_tests()
+print("test part 1 (expected 12521)", go(Board(parse(test_input_1))))
+print("part 1 (answer 14460)", go(Board(parse(part_1_input))))
 
-# print("test part 2 (expected 44169)", go(Board(parse(test_input_2))))
-
-# correct: 14460
-# print("part 1", go(Board(parse(part_1_input))))
-# print("part 2", go(Board(parse(part_2_input))))
+print("test part 2 (expected 44169)", go(Board(parse(test_input_2))))
+print("part 2 (answer 41366)", go(Board(parse(part_2_input))))
