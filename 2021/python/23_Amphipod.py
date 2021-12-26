@@ -82,6 +82,8 @@ desired_room_x = {
 
 desired_a = {v: k for k, v in desired_room_x.items()}
 
+rooms = desired_a.keys()
+
 invalid_hallway_points = {
     (3, 1),
     (5, 1),
@@ -91,7 +93,7 @@ invalid_hallway_points = {
 
 hallway_endpoints = (
     (1, 1),
-    (12, 1)
+    (11, 1)
 )
 
 
@@ -120,45 +122,36 @@ def shortest_path(from_p, to_p):
 
 def distance(from_p, to_p):
     (x, y), (to_x, to_y) = from_p, to_p
-    if x == to_x:
-        return abs(y - to_y)
-    return abs(to_x - x) + abs(y - to_y) + abs(1 - y)
+    dx, dy = abs(x - to_x), abs(y - to_y)
+    if y > 1 and to_y > 1:
+        return dx + abs(1 - to_y) + abs(1 - y)
+    return dx + dy
 
 
 class Board:
-    def __init__(self, grid, is_copy=False):
+    def __init__(self, grid):
         self.grid = [r[:] for r in grid]
         self.room_depth = len(self.grid) - 3
         self.total_cost = 0
         self.moves = ()
-        # move_from -> (move_to, e_cost)
-        self.remaining_a = {}
-        if not is_copy:
-            self.init_remaining()
-
-    def init_remaining(self):
-        for a, from_pos, to_pos in self.room_assignments():
-            self.remaining_a[from_pos] = (to_pos, distance(from_pos, to_pos) * a_costs[a])
 
     def copy(self):
-        nb = Board(self.grid, is_copy=True)
+        nb = Board(self.grid)
         nb.total_cost = self.total_cost
         nb.moves = self.moves
-        nb.remaining_a = dict(self.remaining_a)
         return nb
 
-    def move(self, move_from, move_to, m_cost):
+    def move(self, from_pos, to_pos, debug=False):
         nb = self.copy()
-        (from_x, from_y), (to_x, to_y) = move_from, move_to
-        a = self.grid[from_y][from_x]
-        nb.grid[to_y][to_x] = nb.grid[from_y][from_x]
+        (from_x, from_y), (to_x, to_y) = from_pos, to_pos
+        a = nb.grid[from_y][from_x]
+        nb.grid[to_y][to_x] = a
         nb.grid[from_y][from_x] = '.'
-        nb.moves = nb.moves + ((move_from, move_to, m_cost),)
+        m_cost = distance(from_pos, to_pos) * a_costs[a]
+        nb.moves = nb.moves + ((from_pos, to_pos, m_cost),)
         nb.total_cost += m_cost
-        orig_move_to, e_cost = nb.remaining_a.pop(move_from)
-        # nb.remaining_a[move_to] = (orig_move_to, distance(move_to, orig_move_to) * a_costs[a])
-        # TODO: wtf is wrong here
-        nb.init_remaining()
+        if debug:
+            print(f"move {a}: {from_pos} -> {to_pos}, cost={m_cost}")
         return nb
 
     def a_positions(self):
@@ -194,28 +187,32 @@ class Board:
 
     def estimated_cost(self):
         cost = 0
-        for from_pos, (to_pos, e_cost) in self.remaining_a.items():
+        for a, from_pos, to_pos in self.room_assignments():
             if from_pos == to_pos:
                 continue
-            cost += e_cost
+            cost += a_costs[a] * distance(from_pos, to_pos)
         return cost
 
+    def is_done(self):
+        invalid, valid = self.room_states()
+        if invalid or list(self.hallway_members()):
+            return False
+        return True
+
     def total_heuristic_cost(self):
-        return self.estimated_cost() + self.total_cost
+        return self.total_cost
 
     def __lt__(self, other):
         return self.total_heuristic_cost() < other.total_heuristic_cost()
 
     def print(self):
-        print("\n" + "\n".join([''.join(row) for row in self.grid]) + "\n")
+        print("\n".join([''.join(row) for row in self.grid]) + "\n")
 
     def clear_path(self, from_pos, to_pos):
-        last_pos, last_steps = None, None
         for (next_x, next_y), steps in shortest_path(from_pos, to_pos):
             if self.grid[next_y][next_x] != '.':
-                return None, None
-            last_pos, last_steps = (next_x, next_y), steps
-        return last_pos, last_steps
+                return False
+        return True
 
     def best_valid_room_pos(self, to_pos):
         x, _ = to_pos
@@ -229,24 +226,63 @@ class Board:
                 return None
         return None
 
+    def iter_room(self, room_x):
+        max_y = 1 + self.room_depth
+        for i in range(self.room_depth):
+            y = max_y - i
+            c = self.grid[y][room_x]
+            yield c, (room_x, y)
+
+    def room_has_invalid_members(self, room_x):
+        a = desired_a[room_x]
+        for c, _ in self.iter_room(room_x):
+            if c == '.':
+                continue
+            if c != a:
+                return True
+        return False
+
+    def room_states(self):
+        invalid, valid = set(), set()
+        for room_x in rooms:
+            if self.room_has_invalid_members(room_x):
+                invalid.add(room_x)
+            else:
+                valid.add(room_x)
+        return invalid, valid
+
+    def first_member(self, room_x):
+        for c, (x, y) in reversed(list(self.iter_room(room_x))):
+            if c == '.':
+                continue
+            return c, (x, y)
+
+    def deepest_valid_room_pos(self, room_x):
+        for c, (x, y) in self.iter_room(room_x):
+            if c == '.':
+                return x, y
+        return None
+
+    def hallway_members(self):
+        (start_x, y), (end_x, _) = hallway_endpoints
+        for x in range(start_x, end_x + 1):
+            ga = self.grid[y][x]
+            if ga != '.':
+                yield ga, (x, y)
+
     def possible_moves(self):
-        for from_pos, (to_pos, _) in self.remaining_a.items():
-            if from_pos == to_pos:
-                continue
+        invalid, valid = self.room_states()
 
-            from_x, from_y = from_pos
-            a = self.grid[from_y][from_x]
+        # members leaving rooms
+        for room_x in invalid:
+            a, from_pos = self.first_member(room_x)
 
-            to_pos = self.best_valid_room_pos(to_pos)
-            if to_pos:
-                to_pos, steps = self.clear_path(from_pos, to_pos)
-                if to_pos:
-                    yield from_pos, to_pos, steps * a_costs[a]
+            room_x = desired_room_x[a]
+            if room_x in valid:
+                to_pos = self.deepest_valid_room_pos(desired_room_x[a])
+                if to_pos and self.clear_path(from_pos, to_pos):
+                    yield from_pos, to_pos
                     continue
-
-            if from_pos[1] == 1:
-                # hallway
-                continue
 
             for d in hallway_endpoints:
                 for next_pos, steps in shortest_path(from_pos, d):
@@ -257,7 +293,18 @@ class Board:
                         continue
                     if next_y > 1:
                         continue
-                    yield from_pos, next_pos, steps * a_costs[a]
+                    yield from_pos, next_pos
+
+        for a, from_pos in self.hallway_members():
+            room_x = desired_room_x[a]
+            if room_x not in valid:
+                continue
+            to_pos = self.deepest_valid_room_pos(room_x)
+            if not to_pos:
+                raise Exception("wha")
+            if not self.clear_path(from_pos, to_pos):
+                continue
+            yield from_pos, to_pos
 
 
 def find_path(o_board, debug=False):
@@ -268,11 +315,11 @@ def find_path(o_board, debug=False):
     i = 0
     while states:
         board = heapq.heappop(states)
-        if board.estimated_cost() == 0:
+        if board.is_done():
             return board
 
-        for from_pos, to_pos, m_cost in board.possible_moves():
-            n_board = board.move(from_pos, to_pos, m_cost)
+        for from_pos, to_pos in board.possible_moves():
+            n_board = board.move(from_pos, to_pos)
             heapq.heappush(states, n_board)
 
         i += 1
@@ -281,6 +328,10 @@ def find_path(o_board, debug=False):
                 replay_board(o_board, board)
             print(f"i={i} len(states)={len(states)} h_cost={board.total_heuristic_cost()} e_cost={board.estimated_cost()} t_cost={board.total_cost} len(moves)={len(board.moves)}")
             board.print()
+
+        if not states:
+            raise Exception("wha")
+
     raise Exception("failed")
 
 
@@ -288,9 +339,7 @@ def replay_board(o_board, board):
     print("=============== replay ================")
     o_board.print()
     for from_pos, to_pos, m_cost in board.moves:
-        x, y = from_pos
-        print(f"move {o_board.grid[y][x]}: {from_pos} -> {to_pos} cost={m_cost}")
-        o_board = o_board.move(from_pos, to_pos, m_cost)
+        o_board = o_board.move(from_pos, to_pos, debug=True)
         o_board.print()
     print("=============== ending stats ================")
     print(f"finished with e_cost={o_board.estimated_cost()} t_cost={o_board.total_cost} sanity_cost={sum(c for _, _, c in o_board.moves)}")
@@ -323,8 +372,15 @@ test_filter_completed = """\
 
 def run_tests():
     print("running tests")
-    assert Board(parse(test_input_1)).estimated_cost() > 0
-    assert Board(parse(done_example)).estimated_cost() == 0
+    assert not Board(parse(test_input_1)).is_done()
+    assert Board(parse(done_example)).is_done()
+
+    print(f"test distance")
+    assert distance((9, 2), (10, 1)) == 2
+    assert distance((9, 2), (7, 2)) == 4
+    assert distance((9, 2), (7, 3)) == 5
+    assert distance((9, 1), (9, 3)) == 2
+
     print(f"room assignments")
     b = Board(parse(test_input_1))
     b.print()
@@ -334,7 +390,7 @@ def run_tests():
     print(f"testing problematic state")
     b = Board(parse(test_state_problem))
     b.print()
-    for from_pos, to_pos, cost in b.possible_moves():
+    for from_pos, to_pos in b.possible_moves():
         x, y = from_pos
         a = b.grid[y][x]
         print(f"move {a}: {from_pos} -> {to_pos}")
@@ -342,19 +398,18 @@ def run_tests():
     print(f"test filter completed")
     b = Board(parse(test_filter_completed))
     b.print()
-    for from_pos, to_pos, cost in b.possible_moves():
-        x, y = from_pos
-        a = b.grid[y][x]
-        print(f"move {a}: {from_pos} -> {to_pos}")
+    for from_pos, to_pos in b.possible_moves():
+        nb = b.move(from_pos, to_pos, debug=True)
+        nb.print()
+
     print("tests complete")
 
 
-
 # run_tests()
-# print("test part 1", go(Board(parse(test_input_1)), debug=True))
-# print("part 1", go(Board(parse(part_1_input))))
+print("test part 1 (expected 12521)", go(Board(parse(test_input_1)), debug=False))
+# print("part 1 (answer 14460)", go(Board(parse(part_1_input))))
 
-print("test part 2", go(Board(parse(test_input_2))))
+# print("test part 2 (expected 44169)", go(Board(parse(test_input_2))))
 
 # correct: 14460
 # print("part 1", go(Board(parse(part_1_input))))
