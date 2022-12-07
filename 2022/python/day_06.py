@@ -8,20 +8,20 @@ input_file = join(dirname(realpath(__file__)), '..', 'inputs', f'{day_str}.txt')
 input_text = open(input_file, 'r').read()
 
 
-def part1(raw_input):
+def find_first_n_distinct(raw_input, n=4):
     raw_input = raw_input.strip()
     chars = defaultdict(int)
     # abcdefg
     for i in range(len(raw_input)):
         c = raw_input[i]
         chars[c] += 1
-        if i < 3:
+        if i < (n - 1):
             continue
-        if len(chars) == 4:
+        if len(chars) == n:
             return i + 1
 
         # drop last
-        drop_c = raw_input[i - 3]
+        drop_c = raw_input[i - (n - 1)]
         chars[drop_c] -= 1
         if chars[drop_c] == 0:
             del chars[drop_c]
@@ -33,15 +33,19 @@ def part2(raw_input):
 
 
 def test_part1():
-    assert part1("mjqjpqmgbljsphdztnvjfqwrcgsmlb") == 7
-    assert part1("bvwbjplbgvbhsrlpgdmjqwftvncz") == 5
-    assert part1("nppdvjthqldpwncqszvftbrmjlhg") == 6
-    assert part1("zcfzfwzzqfrljwzlrfnpqdbhtmscgvjw") == 11
+    assert find_first_n_distinct("mjqjpqmgbljsphdztnvjfqwrcgsmlb", n=4) == 7
+    assert find_first_n_distinct("bvwbjplbgvbhsrlpgdmjqwftvncz", n=4) == 5
+    assert find_first_n_distinct("nppdvjthqldpwncqszvftbrmjlhg", n=4) == 6
+    assert find_first_n_distinct("zcfzfwzzqfrljwzlrfnpqdbhtmscgvjw", n=4) == 11
 
 
-# def test_part2():
-#     assert part2(inpu) == "MCD"
+def test_part2():
+    assert find_first_n_distinct("mjqjpqmgbljsphdztnvjfqwrcgsmlb", n=14) == 19
+    assert find_first_n_distinct("bvwbjplbgvbhsrlpgdmjqwftvncz", n=14) == 23
+    assert find_first_n_distinct("nppdvjthqldpwncqszvftbrmjlhg", n=14) == 23
+    assert find_first_n_distinct("nznrnfrfntjfmvfwmzdfjlvtqnbhcprsg", n=14) == 29
+    assert find_first_n_distinct("zcfzfwzzqfrljwzlrfnpqdbhtmscgvjw", n=14) == 26
 
 
-print("Part 1: ", part1(input_text))
-# print("Part 2: ", part2(input_text))
+print("Part 1: ", find_first_n_distinct(input_text, n=4))
+print("Part 2: ", find_first_n_distinct(input_text, n=14))
