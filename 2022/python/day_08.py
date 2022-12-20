@@ -20,32 +20,32 @@ def parse_grid(raw_input):
     return [[int(c) for c in l] for l in lines]
 
 
-def count_visible(grid, reverse_inner=False, reverse_outer=False, swap_outer_inner=False):
+def iter_rows(grid, reverse=False):
     n_rows, n_cols = len(grid), len(grid[0])
-    visible = [[0 for _ in range(n_cols)] for _ in range(n_rows)]
+    for i in range(n_rows):
+        cols = range(n_cols)
+        if reverse:
+            cols = reversed(cols)
+        yield [(i, j) for j in cols]
 
-    outer = range(n_rows)
-    inner = range(n_cols)
 
-    if reverse_inner:
-        inner = list(reversed(inner))
+def iter_cols(grid, reverse=False):
+    n_rows, n_cols = len(grid), len(grid[0])
+    for j in range(n_cols):
+        rows = range(n_rows)
+        if reverse:
+            rows = reversed(rows)
+        yield [(i, j) for i in rows]
 
-    if reverse_outer:
-        outer = list(reversed(outer))
 
-    if swap_outer_inner:
-        inner, outer = outer, inner
-
-    for i in outer:
-        max_height = -1
-        for j in inner:
-            t = grid[j][i] if swap_outer_inner else grid[i][j]
-            if t > max_height:
-                vi, vj = (j, i) if swap_outer_inner else (i, j)
-                visible[vi][vj] = 1
-                max_height = t
-
-    return visible
+def visible_from_edge(row):
+    max_height = -1
+    for x in row:
+        if x > max_height:
+            yield 1
+            max_height = x
+        else:
+            yield 0
 
 
 def count_non_zero(grid):
@@ -67,14 +67,37 @@ def merge_grids(grids):
     return result
 
 
+def count_visible(grid, direction, vfunc):
+    n_rows, n_cols = len(grid), len(grid[0])
+    visible = [[0 for _ in range(n_cols)] for _ in range(n_rows)]
+
+    if direction == "left":
+        rows = iter_rows(grid)
+    elif direction == "right":
+        rows = iter_rows(grid, reverse=True)
+    elif direction == "top":
+        rows = iter_cols(grid)
+    elif direction == "bottom":
+        rows = iter_cols(grid, reverse=True)
+    else:
+        raise Exception("invalid")
+
+    for row in rows:
+        row_vals = [grid[i][j] for (i, j) in row]
+        for (i, j), v in zip(row, vfunc(row_vals)):
+            visible[i][j] = v
+
+    return visible
+
+
 def part1(raw_input):
     grid = parse_grid(raw_input)
-
-    left = count_visible(grid)
-    right = count_visible(grid, reverse_inner=True)
-    top = count_visible(grid, swap_outer_inner=True)
-    bottom = count_visible(grid, reverse_outer=True, swap_outer_inner=True)
-    merged = merge_grids([left, right, top, bottom])
+    merged = merge_grids([
+        count_visible(grid, "left", visible_from_edge),
+        count_visible(grid, "right", visible_from_edge),
+        count_visible(grid, "top", visible_from_edge),
+        count_visible(grid, "bottom", visible_from_edge)
+    ])
     return count_non_zero(merged)
 
 
@@ -91,7 +114,7 @@ def test_visible_left():
     10101
     11010
     """
-    left = count_visible(grid)
+    left = count_visible(grid, "left", visible_from_edge)
     expected = parse_grid(expected)
     assert left == expected, "left"
 
@@ -106,7 +129,7 @@ def test_visible_right():
     00001
     00011
     """
-    right = count_visible(grid, reverse_inner=True)
+    right = count_visible(grid, "right", visible_from_edge)
     expected = parse_grid(expected)
     assert right == expected, "right"
 
@@ -121,7 +144,7 @@ def test_visible_top():
     00010
     """
 
-    top = count_visible(grid, swap_outer_inner=True)
+    top = count_visible(grid, "top", visible_from_edge)
     expected = parse_grid(expected)
     assert top == expected, "top"
 
@@ -136,27 +159,13 @@ def test_visible_bottom():
     11111
     """
 
-    bottom = count_visible(grid, swap_outer_inner=True, reverse_outer=True)
+    bottom = count_visible(grid, "bottom", visible_from_edge)
     expected = parse_grid(expected)
     assert bottom == expected, "bottom"
 
 
 def test_part1():
     assert part1(test_input) == 21
-
-
-def test_visible_trees_left():
-    grid = parse_grid(test_input)
-    expected = """\
-    01231
-    01112
-    01111
-    01112
-    01121
-    """
-    left = count_visible(grid)
-    expected = parse_grid(expected)
-    assert left == expected, "left"
 
 
 def test_part2():
