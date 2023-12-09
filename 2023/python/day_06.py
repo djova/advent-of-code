@@ -30,7 +30,7 @@ def get_num_ways_to_win(raw_input, part2=False):
     for t, r in zip(times, records):
         ways = 0
         for h in range(0, t):
-            
+            # probably can solve direct using quadratic equation?
             d = (t - h) * h
             if d > r:
                 ways += 1
